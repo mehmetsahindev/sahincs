@@ -12,11 +12,14 @@ import com.lagradost.cloudstream3.utils.*
  *
  * Bu oynatıcılar **Playerjs** kullanıyor ve akış adresini sayfada tutmuyor:
  * HTML'de yalnızca çıplak `master.m3u8` metni var, tam adres obfuscate edilmiş
- * inline script tarafından çalışma anında `<host>/master.m3u8?<token>` şeklinde kuruluyor.
- * Ayrıca host Cloudflare arkasında ve Referer'sız isteklere 403 dönüyor.
+ * inline script tarafından çalışma anında `<host>/master.m3u8?<token>` olarak kuruluyor.
+ * Host ayrıca Cloudflare arkasında ve Referer'sız isteklere 403 dönüyor.
  *
- * Bu yüzden statik regex ile çözmek mümkün değil; sayfayı WebView'de açıp
- * oynatıcının kendi attığı m3u8 isteğini yakalıyoruz.
+ * Bu yüzden sayfayı WebView'de açıp oynatıcının kendi m3u8 isteğini yakalıyoruz.
+ *
+ * ! Kritik ayrıntı: oynatıcı istek atmadan önce tıklama bekliyor. Sayfayı öylece
+ * ! yüklemek yetmiyor — hiçbir istek doğmuyor ve çözümleme timeout'a kadar asılı kalıyor.
+ * ! Bu yüzden [BASLAT_SCRIPTI] ile oynatmayı tetikliyoruz.
  */
 open class SelcukPlayer(override val mainUrl: String) : ExtractorApi() {
     override val name            = "SelcukPlayer"
@@ -24,6 +27,31 @@ open class SelcukPlayer(override val mainUrl: String) : ExtractorApi() {
 
     companion object {
         private const val KAYIT = "SLC_Player"
+
+        /**
+         * Oynatıcının üzerindeki oynat düğmesi bir SVG; doğrudan seçici yerine sayfanın
+         * ortasındaki elemana gerçek fare olayı dizisi gönderiyoruz. Oynatıcı geç
+         * kurulabildiği için kısa aralıklarla tekrar deniyor, video oluşunca duruyor.
+         */
+        private const val BASLAT_SCRIPTI = """
+            (function () {
+                var deneme = 0;
+                var zamanlayici = setInterval(function () {
+                    deneme++;
+                    try {
+                        var eleman = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
+                        if (eleman) {
+                            ['mousedown', 'mouseup', 'click'].forEach(function (tip) {
+                                eleman.dispatchEvent(new MouseEvent(tip, { bubbles: true, cancelable: true, view: window }));
+                            });
+                        }
+                        var video = document.querySelector('video');
+                        if (video) { video.play(); clearInterval(zamanlayici); }
+                    } catch (e) {}
+                    if (deneme > 20) clearInterval(zamanlayici);
+                }, 500);
+            })();
+        """
     }
 
     override suspend fun getUrl(url: String, referer: String?, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit) {
@@ -35,7 +63,8 @@ open class SelcukPlayer(override val mainUrl: String) : ExtractorApi() {
             referer     = kaynakReferer,
             interceptor = WebViewResolver(
                 interceptUrl = Regex("""\.m3u8"""),
-                timeout      = 30_000L
+                script       = BASLAT_SCRIPTI,
+                timeout      = 20_000L
             )
         )
 
