@@ -14,7 +14,7 @@ import java.net.URI
 import java.net.URLEncoder
 
 class SelcukFlix : MainAPI() {
-    override var mainUrl              = "https://selcukflix.co"
+    override var mainUrl              = "https://selcukflix.com"
     override var name                 = "SelcukFlix"
     override val hasMainPage          = true
     override var lang                 = "tr"
@@ -68,6 +68,12 @@ class SelcukFlix : MainAPI() {
             ),
             referer = "${mainUrl}/"
         ).text
+
+        // ! Domain değişince 301 query string'i düşürüyor; API o zaman JSON yerine düz metin uyarı döndürüyor.
+        // ! Bunu erken yakalamazsak Jackson'ın anlaşılmaz "Unrecognized token" hatası çıkıyor.
+        if (!yanit.trimStart().startsWith("{")) {
+            throw ErrorLoadingException("${ucNokta} » JSON yerine düz yanıt geldi, domain değişmiş olabilir: ${yanit.take(120)}")
+        }
 
         val sifreli = mapper.readTree(yanit).path("response").takeIf { it.isTextual }?.asText()
             ?: throw ErrorLoadingException("${ucNokta} » şifreli yanıt alınamadı")
