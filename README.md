@@ -9,7 +9,7 @@ CloudStream için yazılmış Türkçe içerik eklentileri.
 3. `Depo URL'si` alanına aşağıdaki adresi yapıştırın:
 
 ```
-https://raw.githubusercontent.com/mehmetsahindev/sahincs/main/repo.json
+https://raw.githubusercontent.com/mehmetsahindev/sahincs/master/repo.json
 ```
 
 ## 📦 Eklentiler
@@ -26,7 +26,7 @@ https://raw.githubusercontent.com/mehmetsahindev/sahincs/main/repo.json
 
 Çıktılar: `<Eklenti>/build/<Eklenti>.cs3` ve `build/plugins.json`
 
-`master`/`main` dalına yapılan her push'ta **CloudStream Derleyici** iş akışı eklentileri derleyip
+`master` dalına yapılan her push'ta **CloudStream Derleyici** iş akışı eklentileri derleyip
 `builds` dalına yükler; CloudStream de depoyu oradan okur.
 
 ## ➕ Yeni eklenti ekleme
