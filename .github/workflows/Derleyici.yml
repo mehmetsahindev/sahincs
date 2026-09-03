@@ -13,7 +13,6 @@ on:
     paths-ignore:
       - "**/*.md"
       - "repo.json"
-      - ".github/**"
 
 jobs:
   Derle:
@@ -39,6 +38,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+          cache: gradle
 
       - name: "Android SDK kur"
         uses: android-actions/setup-android@v3
@@ -47,7 +47,11 @@ jobs:
         run: |
           cd "${GITHUB_WORKSPACE}/src"
           chmod +x gradlew
-          ./gradlew make makePluginsJson
+
+          # ! -SNAPSHOT bağımlılıkları JitPack'ten çözülüyor ve zaman zaman zaman aşımına uğruyor;
+          # ! geçici bir çözümleme hatası derlemeyi düşürmesin diye bir kez daha deniyoruz
+          ./gradlew make makePluginsJson --stacktrace \
+            || (echo "::warning::ilk deneme başarısız, tekrar deneniyor" && sleep 30 && ./gradlew make makePluginsJson --stacktrace)
 
       - name: "Çıktıları 'builds' dalına taşı"
         run: |
