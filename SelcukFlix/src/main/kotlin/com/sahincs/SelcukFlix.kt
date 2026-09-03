@@ -314,19 +314,21 @@ class SelcukFlix : MainAPI() {
 
         var bulundu = false
 
+        // ! Aynı iframe adresi birden çok dil satırında tekrar ediyor; akış aynı olduğu için
+        // ! adrese göre grupluyoruz — WebView çözümlemesi saniyeler sürdüğünden tekrarı göze alamayız
         kaynaklar
             .mapNotNull { kaynak ->
                 val adres = iframeAdresi(kaynak.metin("source_content")) ?: return@mapNotNull null
-                val dil   = kaynak.metin("language_name") ?: ""
 
-                Triple(adres, dil, kaynak)
+                adres to kaynak
             }
-            .distinctBy { (adres, dil, _) -> "${adres}|${dil}" }   // ! aynı iframe her dil için tekrar ediliyor
-            .forEach { (adres, dil, kaynak) ->
+            .groupBy({ it.first }, { it.second })
+            .forEach { (adres, grup) ->
+                val diller = grup.mapNotNull { it.metin("language_name") }.distinct()
                 val etiket = listOfNotNull(
-                    kaynak.metin("source_name"),
-                    dil.takeIf { it.isNotBlank() },
-                    kaynak.metin("quality_name")
+                    grup.firstNotNullOfOrNull { it.metin("source_name") },
+                    diller.joinToString(" / ").takeIf { it.isNotBlank() },
+                    grup.firstNotNullOfOrNull { it.metin("quality_name") }
                 ).joinToString(" • ")
 
                 Log.d(KAYIT, "iframe » ${etiket} » ${adres}")
@@ -335,8 +337,14 @@ class SelcukFlix : MainAPI() {
                 // ! linkleri önce topla, etiketleyip burada (suspend bağlamda) yeniden yayınla
                 val toplanan = mutableListOf<ExtractorLink>()
 
-                // ? Önce kayıtlı çözücüler, olmazsa jenerik oynatıcı çözümleyicimiz
-                if (!loadExtractor(adres, "${mainUrl}/", subtitleCallback) { toplanan.add(it) }) {
+                // ? Önce kayıtlı çözücüler, olmazsa jenerik oynatıcı çözümleyicimiz.
+                // ! Bir kaynağın patlaması diğerlerini düşürmesin diye ikisi de runCatching içinde
+                val cozuldu = runCatching {
+                    loadExtractor(adres, "${mainUrl}/", subtitleCallback) { toplanan.add(it) }
+                }.onFailure { Log.d(KAYIT, "çözücü hatası » ${adres} » ${it.message}") }
+                 .getOrDefault(false)
+
+                if (!cozuldu && toplanan.isEmpty()) {
                     runCatching {
                         SelcukPlayer(kokAdres(adres)).getUrl(adres, "${mainUrl}/", subtitleCallback) { toplanan.add(it) }
                     }.onFailure { Log.d(KAYIT, "çözümlenemedi » ${adres} » ${it.message}") }
