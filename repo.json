@@ -1,0 +1,8 @@
+{
+    "name": "Sahincs Eklenti Deposu",
+    "description": "CloudStream için Türkçe eklentiler",
+    "manifestVersion": 1,
+    "pluginLists": [
+        "https://raw.githubusercontent.com/mehmetsahindev/sahincs/builds/plugins.json"
+    ]
+}
