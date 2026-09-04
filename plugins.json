@@ -1,0 +1,23 @@
+[
+    {
+        "iconUrl": "https://www.google.com/s2/favicons?domain=selcukflix.co&sz=%size%",
+        "fileHash": "sha256-321490f2562500e74bc5956d7c928c998d4e497cd49250a8805d3e0e33829bbe",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/mehmetsahindev/sahincs",
+        "fileSize": 31287,
+        "status": 1,
+        "language": "tr",
+        "authors": [
+            "sahincs"
+        ],
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "version": 10,
+        "internalName": "SelcukFlix",
+        "description": "SelcukFlix - T\u00fcrk\u00e7e dublaj ve altyaz\u0131l\u0131 yabanc\u0131 dizi & film ar\u015fivi.",
+        "url": "https://raw.githubusercontent.com/mehmetsahindev/sahincs/builds/SelcukFlix.cs3",
+        "name": "SelcukFlix"
+    }
+]
