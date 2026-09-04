@@ -313,6 +313,7 @@ class SelcukFlix : MainAPI() {
         }
 
         var bulundu = false
+        val hatalar = mutableListOf<String>()
 
         // ! Aynı iframe adresi birden çok dil satırında tekrar ediyor; akış aynı olduğu için
         // ! adrese göre grupluyoruz — WebView çözümlemesi saniyeler sürdüğünden tekrarı göze alamayız
@@ -341,13 +342,18 @@ class SelcukFlix : MainAPI() {
                 // ! Bir kaynağın patlaması diğerlerini düşürmesin diye ikisi de runCatching içinde
                 val cozuldu = runCatching {
                     loadExtractor(adres, "${mainUrl}/", subtitleCallback) { toplanan.add(it) }
-                }.onFailure { Log.d(KAYIT, "çözücü hatası » ${adres} » ${it.message}") }
-                 .getOrDefault(false)
+                }.onFailure {
+                    Log.d(KAYIT, "çözücü hatası » ${adres} » ${it.message}")
+                    hatalar += it.message.orEmpty()
+                }.getOrDefault(false)
 
                 if (!cozuldu && toplanan.isEmpty()) {
                     runCatching {
                         SelcukPlayer(kokAdres(adres)).getUrl(adres, "${mainUrl}/", subtitleCallback) { toplanan.add(it) }
-                    }.onFailure { Log.d(KAYIT, "çözümlenemedi » ${adres} » ${it.message}") }
+                    }.onFailure {
+                        Log.d(KAYIT, "çözümlenemedi » ${adres} » ${it.message}")
+                        hatalar += it.message.orEmpty()
+                    }
                 }
 
                 toplanan.forEach { link ->
@@ -363,6 +369,12 @@ class SelcukFlix : MainAPI() {
                     )
                 }
             }
+
+        // ! Hiçbir kaynak çözülemediyse sessizce false dönmek yerine hatayı yüzeye çıkarıyoruz;
+        // ! CloudStream'in genel "bağlantı kurulamadı" mesajı sorunun nerede olduğunu göstermiyor
+        if (!bulundu && hatalar.isNotEmpty()) {
+            throw ErrorLoadingException(hatalar.distinct().joinToString(" || ").take(500))
+        }
 
         return bulundu
     }

@@ -65,11 +65,17 @@ open class SelcukPlayer(override val mainUrl: String) : ExtractorApi() {
                 var deneme = 0;
                 var zamanlayici = setInterval(function () {
                     deneme++;
-                    var bulundu = dene();
+                    dene();
                     if (document.querySelector('video') || deneme > 30) clearInterval(zamanlayici);
                 }, 400);
 
-                return 'vp=' + window.innerWidth + 'x' + window.innerHeight + ' hedef=' + hedefSayisi;
+                var baslik = (document.title || '').slice(0, 40);
+                var cf = /Attention Required|been blocked|Cloudflare/i.test(document.title + ' ' + (document.body ? document.body.innerText.slice(0, 400) : ''));
+
+                return 'vp=' + window.innerWidth + 'x' + window.innerHeight
+                     + ' hedef=' + hedefSayisi
+                     + ' cf=' + cf
+                     + ' baslik=' + baslik;
             })();
         """
     }
@@ -83,6 +89,9 @@ open class SelcukPlayer(override val mainUrl: String) : ExtractorApi() {
 
         val yanit = app.get(
             url,
+            // ! Referer hem parametre hem başlık olarak: WebView sayfayı Referer'sız yüklerse
+            // ! Cloudflare engel sayfası geliyor ve oynatıcı hiç kurulmuyor
+            headers     = mapOf("Referer" to kaynakReferer),
             referer     = kaynakReferer,
             interceptor = WebViewResolver(
                 interceptUrl   = Regex("""\.m3u8"""),
