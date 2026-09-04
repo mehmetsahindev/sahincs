@@ -338,20 +338,22 @@ class SelcukFlix : MainAPI() {
                 // ! linkleri önce topla, etiketleyip burada (suspend bağlamda) yeniden yayınla
                 val toplanan = mutableListOf<ExtractorLink>()
 
-                // ? Önce kayıtlı çözücüler, olmazsa jenerik oynatıcı çözümleyicimiz.
-                // ! Bir kaynağın patlaması diğerlerini düşürmesin diye ikisi de runCatching içinde
-                val cozuldu = runCatching {
-                    loadExtractor(adres, "${mainUrl}/", subtitleCallback) { toplanan.add(it) }
+                // ! Önce KENDİ çözücümüzü doğrudan çağırıyoruz. loadExtractor bu host'lar için
+                // ! zaten SelcukPlayer'a yönleniyor ama fırlattığı hatayı kendi içinde yutup
+                // ! "eşleşti" diye true dönüyor; o yolda hata mesajı bize hiç ulaşmıyor.
+                runCatching {
+                    SelcukPlayer(kokAdres(adres)).getUrl(adres, "${mainUrl}/", subtitleCallback) { toplanan.add(it) }
                 }.onFailure {
-                    Log.d(KAYIT, "çözücü hatası » ${adres} » ${it.message}")
+                    Log.d(KAYIT, "çözümlenemedi » ${adres} » ${it.message}")
                     hatalar += it.message.orEmpty()
-                }.getOrDefault(false)
+                }
 
-                if (!cozuldu && toplanan.isEmpty()) {
+                // ? Bizimki bir şey bulamadıysa tanımadığımız host'lar için kayıtlı çözücüleri dene
+                if (toplanan.isEmpty()) {
                     runCatching {
-                        SelcukPlayer(kokAdres(adres)).getUrl(adres, "${mainUrl}/", subtitleCallback) { toplanan.add(it) }
+                        loadExtractor(adres, "${mainUrl}/", subtitleCallback) { toplanan.add(it) }
                     }.onFailure {
-                        Log.d(KAYIT, "çözümlenemedi » ${adres} » ${it.message}")
+                        Log.d(KAYIT, "çözücü hatası » ${adres} » ${it.message}")
                         hatalar += it.message.orEmpty()
                     }
                 }
@@ -372,8 +374,11 @@ class SelcukFlix : MainAPI() {
 
         // ! Hiçbir kaynak çözülemediyse sessizce false dönmek yerine hatayı yüzeye çıkarıyoruz;
         // ! CloudStream'in genel "bağlantı kurulamadı" mesajı sorunun nerede olduğunu göstermiyor
-        if (!bulundu && hatalar.isNotEmpty()) {
-            throw ErrorLoadingException(hatalar.distinct().joinToString(" || ").take(500))
+        if (!bulundu) {
+            val mesaj = hatalar.distinct().filter { it.isNotBlank() }
+                .joinToString(" || ").ifBlank { "çözücü hiç link üretmedi (kaynak: ${kaynaklar.size})" }
+
+            throw ErrorLoadingException(mesaj.take(500))
         }
 
         return bulundu
