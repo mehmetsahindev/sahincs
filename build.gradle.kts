@@ -11,7 +11,9 @@ buildscript {
     dependencies {
         classpath("com.android.tools.build:gradle:8.7.3")
         // Eklentileri .cs3 olarak paketleyen CloudStream gradle eklentisi
-        classpath("com.github.recloudstream:gradle:-SNAPSHOT")
+        // ! -SNAPSHOT kullanma: JitPack "master" için pom sunuyor ama jar sunmuyor,
+        // ! bu yüzden önbelleksiz ortamda (CI) çözümleme anında 404 ile düşüyor.
+        classpath("com.github.recloudstream:gradle:81b1d424d2")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.3.0")
     }
 }
@@ -71,7 +73,7 @@ subprojects {
         val implementation by configurations
 
         // CloudStream kütüphanesi (tüm MainAPI / ExtractorApi sınıfları)
-        implementation("com.github.recloudstream.cloudstream:library:-SNAPSHOT")
+        implementation("com.github.recloudstream.cloudstream:library:efc1915fd6")
 
         implementation(kotlin("stdlib"))                                              // Kotlin temel kütüphanesi
         implementation("com.github.Blatzar:NiceHttp:0.4.11")                          // HTTP kütüphanesi
