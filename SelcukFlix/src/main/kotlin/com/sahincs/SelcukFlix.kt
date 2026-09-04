@@ -10,7 +10,6 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
-import java.net.URI
 import java.net.URLEncoder
 
 class SelcukFlix : MainAPI() {
@@ -288,10 +287,6 @@ class SelcukFlix : MainAPI() {
         }
     }
 
-    private fun kokAdres(adres: String): String = runCatching {
-        URI(adres).let { "${it.scheme}://${it.host}" }
-    }.getOrDefault(mainUrl)
-
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         Log.d(KAYIT, "data » ${data}")
 
@@ -338,24 +333,13 @@ class SelcukFlix : MainAPI() {
                 // ! linkleri önce topla, etiketleyip burada (suspend bağlamda) yeniden yayınla
                 val toplanan = mutableListOf<ExtractorLink>()
 
-                // ! Önce KENDİ çözücümüzü doğrudan çağırıyoruz. loadExtractor bu host'lar için
-                // ! zaten SelcukPlayer'a yönleniyor ama fırlattığı hatayı kendi içinde yutup
-                // ! "eşleşti" diye true dönüyor; o yolda hata mesajı bize hiç ulaşmıyor.
+                // ? Çözümlemeyi CloudStream'in kayıtlı extractor'larına bırakıyoruz;
+                // ? pichive/dplayer host'ları Pichive ve FourPichive tarafından destekleniyor
                 runCatching {
-                    SelcukPlayer(kokAdres(adres)).getUrl(adres, "${mainUrl}/", subtitleCallback) { toplanan.add(it) }
+                    loadExtractor(adres, "${mainUrl}/", subtitleCallback) { toplanan.add(it) }
                 }.onFailure {
-                    Log.d(KAYIT, "çözümlenemedi » ${adres} » ${it.message}")
+                    Log.d(KAYIT, "çözücü hatası » ${adres} » ${it.message}")
                     hatalar += it.message.orEmpty()
-                }
-
-                // ? Bizimki bir şey bulamadıysa tanımadığımız host'lar için kayıtlı çözücüleri dene
-                if (toplanan.isEmpty()) {
-                    runCatching {
-                        loadExtractor(adres, "${mainUrl}/", subtitleCallback) { toplanan.add(it) }
-                    }.onFailure {
-                        Log.d(KAYIT, "çözücü hatası » ${adres} » ${it.message}")
-                        hatalar += it.message.orEmpty()
-                    }
                 }
 
                 toplanan.forEach { link ->

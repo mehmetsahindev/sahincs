@@ -10,9 +10,8 @@ class SelcukFlixPlugin : BasePlugin() {
     override fun load() {
         registerMainAPI(SelcukFlix())
 
-        // ! Oynatıcı host'ları sık değişiyor — yenisini buraya eklemen yeterli
-        registerExtractorAPI(SelcukPlayer("https://pichive.online"))
-        registerExtractorAPI(SelcukPlayer("https://four.pichive.online"))
-        registerExtractorAPI(SelcukPlayer("https://sn.dplayer82.site"))
+        // ! Oynatıcı çözücüsü KAYDETMİYORUZ: CloudStream'in kendi Pichive / FourPichive
+        // ! extractor'ları (ContentX ailesi) bu host'ları zaten çözüyor. Buraya kendi
+        // ! çözücümüzü kaydetmek onları gölgeleyip oynatmayı tamamen bozuyordu.
     }
 }
