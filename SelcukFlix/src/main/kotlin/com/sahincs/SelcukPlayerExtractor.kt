@@ -3,6 +3,8 @@
 package com.sahincs
 
 import android.util.Log
+import com.fasterxml.jackson.databind.DeserializationFeature
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.network.WebViewResolver
 import com.lagradost.cloudstream3.utils.*
@@ -10,14 +12,18 @@ import com.lagradost.cloudstream3.utils.*
 /**
  * SelcukFlix'in `iframe.php?v=<hash>` tipi oynatıcıları (pichive.online, dplayer82.site).
  *
- * Oynatıcı **Playerjs**; akış adresini sayfada tutmuyor. HTML'de yalnızca çıplak
- * `master.m3u8` metni var, tam adres obfuscate edilmiş inline script tarafından
- * çalışma anında `<host>/master.m3u8?<token>` olarak kuruluyor. Bu yüzden sayfayı
- * WebView'de açıp oynatıcının kendi isteğini yakalıyoruz.
+ * Tarayıcıda adım adım çözülen akış:
+ *   1. `iframe.php` sayfasında tırnak içinde ~3700 karakterlik base64 blob duruyor
+ *   2. Oynatıcı bunu `source2.php?v=<blob>` adresine gönderiyor
+ *   3. Dönen JSON: playlist[0].sources[0].file → gerçek HLS manifesti (#EXTM3U)
+ *   4. Manifest Referer'sız istekte 404 veriyor, herhangi bir Referer yeterli
  *
- * Tarayıcıda ölçülen iki kritik davranış:
- *  1. Oynatıcı, tıklama gelmeden hiçbir istek atmıyor → [BASLAT_SCRIPTI] ile tetikliyoruz.
- *  2. Akış adresi Referer'sız isteklere 404 dönüyor; herhangi bir Referer yeterli.
+ * Neden WebView: host Cloudflare arkasında ve düz HTTP istemcisini doğru Referer'la
+ * bile 403'lüyor (aynı ağdan tarayıcı geçiyor, curl geçmiyor → istemci parmak izi).
+ * Bu yüzden istek tarayıcı bağlamından gitmek zorunda.
+ *
+ * ! useOkhttp = false: varsayılan (true) WebView isteklerini OkHttp'ye yönlendiriyor,
+ * ! bu da Cloudflare'e takılan istemciye geri dönmek demek.
  */
 open class SelcukPlayer(override val mainUrl: String) : ExtractorApi() {
     override val name            = "SelcukPlayer"
@@ -26,56 +32,40 @@ open class SelcukPlayer(override val mainUrl: String) : ExtractorApi() {
     companion object {
         private const val KAYIT = "SLC_Player"
 
+        private val mapper = jacksonObjectMapper().apply {
+            configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+        }
+
         /**
-         * Oynat düğmesi bir SVG ve konteyner `#Player` / `.jw-display-icon-container`.
-         *
-         * ! Koordinat tabanlı `elementFromPoint` kullanmıyoruz: CloudStream'in WebView'i
-         * ! ekranda görünmediği için viewport 0 olabiliyor ve o zaman hiçbir eleman dönmüyor.
-         * ! Seçici tabanlı tıklama tarayıcıda koordinatsız olarak doğrulandı.
-         *
-         * Oynatıcı geç kurulabildiğinden kısa aralıklarla tekrar deneniyor; video
-         * oluşunca duruyor. Dönen metin [WebViewResolver] scriptCallback'ine gidiyor.
+         * Blob'u sayfadan çıkarıp `source2.php`yi sayfanın kendi bağlamından çağırır.
+         * Böylece Cloudflare sorun olmuyor ve oynatıcıya tıklamaya gerek kalmıyor.
+         * Yedek olarak oynatmayı da tetikliyor (m3u8 isteği de yakalanabilsin diye).
          */
-        private const val BASLAT_SCRIPTI = """
+        private const val COZUM_SCRIPTI = """
             (function () {
-                function tikla(el) {
-                    ['mousedown', 'mouseup', 'click'].forEach(function (tip) {
-                        try { el.dispatchEvent(new MouseEvent(tip, { bubbles: true, cancelable: true, view: window })); } catch (e) {}
-                    });
-                }
+                try {
+                    var html = document.documentElement.innerHTML;
+                    var eslesme = html.match(/["']([A-Za-z0-9+/=]{1000,})["']/);
 
-                function dene() {
-                    var hedefler = [].slice.call(
-                        document.querySelectorAll('#Player, .jw-display-icon-container, #Player svg, #Player path, video')
-                    );
-                    try {
-                        var orta = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
-                        if (orta) hedefler.push(orta);
-                    } catch (e) {}
+                    if (eslesme) {
+                        var istek = new XMLHttpRequest();
+                        istek.open('GET', '/source2.php?v=' + encodeURIComponent(eslesme[1]), true);
+                        istek.send();
+                    }
+                } catch (e) {}
 
-                    hedefler.forEach(tikla);
+                // ? yedek yol: oynatıcıyı tetikle, m3u8 isteği de doğsun
+                try {
+                    var tikla = function (el) {
+                        ['mousedown', 'mouseup', 'click'].forEach(function (tip) {
+                            el.dispatchEvent(new MouseEvent(tip, { bubbles: true, cancelable: true, view: window }));
+                        });
+                    };
+                    var hedefler = document.querySelectorAll('#Player, .jw-display-icon-container');
+                    for (var i = 0; i < hedefler.length; i++) tikla(hedefler[i]);
+                } catch (e) {}
 
-                    var video = document.querySelector('video');
-                    if (video) { try { video.play(); } catch (e) {} }
-
-                    return hedefler.length;
-                }
-
-                var hedefSayisi = dene();
-                var deneme = 0;
-                var zamanlayici = setInterval(function () {
-                    deneme++;
-                    dene();
-                    if (document.querySelector('video') || deneme > 30) clearInterval(zamanlayici);
-                }, 400);
-
-                var baslik = (document.title || '').slice(0, 40);
-                var cf = /Attention Required|been blocked|Cloudflare/i.test(document.title + ' ' + (document.body ? document.body.innerText.slice(0, 400) : ''));
-
-                return 'vp=' + window.innerWidth + 'x' + window.innerHeight
-                     + ' hedef=' + hedefSayisi
-                     + ' cf=' + cf
-                     + ' baslik=' + baslik;
+                return 'ok';
             })();
         """
     }
@@ -84,27 +74,38 @@ open class SelcukPlayer(override val mainUrl: String) : ExtractorApi() {
         val kaynakReferer = referer ?: "${mainUrl}/"
         Log.d(KAYIT, "url » ${url}")
 
-        // ? Script'in ilk turdaki çıktısı; çözümleme tutmazsa hata mesajına koyuyoruz
-        var tani = "-"
-
         val yanit = app.get(
             url,
-            // ! Referer hem parametre hem başlık olarak: WebView sayfayı Referer'sız yüklerse
-            // ! Cloudflare engel sayfası geliyor ve oynatıcı hiç kurulmuyor
-            headers     = mapOf("Referer" to kaynakReferer),
             referer     = kaynakReferer,
             interceptor = WebViewResolver(
-                interceptUrl   = Regex("""\.m3u8"""),
-                script         = BASLAT_SCRIPTI,
-                scriptCallback = { sonuc -> tani = sonuc },
-                timeout        = 20_000L
+                interceptUrl = Regex("""source2\.php|\.m3u8"""),
+                useOkhttp    = false,
+                script       = COZUM_SCRIPTI,
+                timeout      = 25_000L
             )
         )
 
-        Log.d(KAYIT, "tanı » ${tani}")
+        val yakalanan = yanit.url
+        Log.d(KAYIT, "yakalanan » ${yakalanan}")
 
-        val akis = yanit.url.takeIf { it.contains(".m3u8") }
-            ?: throw ErrorLoadingException("${name} » akış yakalanamadı [${tani}] » ${url}")
+        val akis = when {
+            // ? doğrudan akış yakalandıysa onu kullan
+            yakalanan.contains(".m3u8") -> yakalanan
+
+            // ? source2.php yakalandıysa gövdesinden file alanını çıkar
+            yakalanan.contains("source2.php") -> {
+                val govde = runCatching { yanit.text }.getOrDefault("")
+
+                runCatching {
+                    mapper.readTree(govde)
+                        .path("playlist").path(0)
+                        .path("sources").path(0)
+                        .path("file").takeIf { it.isTextual }?.asText()
+                }.getOrNull()
+            }
+
+            else -> null
+        } ?: throw ErrorLoadingException("${name} » akış yakalanamadı (yakalanan: ${yakalanan.take(80)})")
 
         Log.d(KAYIT, "akış » ${akis}")
 
