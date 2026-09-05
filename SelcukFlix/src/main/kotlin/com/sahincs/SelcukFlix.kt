@@ -274,6 +274,38 @@ class SelcukFlix : MainAPI() {
 
     // ══════════════════════════════ Video kaynakları ══════════════════════════════
 
+    /**
+     * Oynatıcı sayfasındaki altyazıları çıkarır.
+     *
+     * ! Hazır ContentX extractor'ı altyazıyı `,"file":"...","label":"..."` kalıbıyla arıyor,
+     * ! yani `"file"` öncesinde virgül bekliyor. Pichive sayfasında altyazı nesnesi dizinin
+     * ! ilk elemanı olduğu için orada virgül yok ve hiçbir altyazı bulunamıyor.
+     * ! Bu yüzden virgülsüz kalıpla kendimiz topluyoruz.
+     */
+    private suspend fun altyazilariTopla(adres: String, gorulen: MutableSet<String>, subtitleCallback: (SubtitleFile) -> Unit) {
+        val sayfa = app.get(adres, referer = "${mainUrl}/").text
+
+        Regex(""""file":"([^"]+)","label":"([^"]+)"""").findAll(sayfa).forEach { eslesme ->
+            val (hamAdres, hamEtiket) = eslesme.destructured
+            val altyaziAdresi = hamAdres.replace("\\/", "/").replace("\\", "")
+
+            if (!altyaziAdresi.contains(".vtt") && !altyaziAdresi.contains(".srt")) return@forEach
+            if (!gorulen.add(altyaziAdresi)) return@forEach
+
+            Log.d(KAYIT, "altyazı » ${kacisCoz(hamEtiket)}")
+
+            subtitleCallback.invoke(
+                SubtitleFile(lang = kacisCoz(hamEtiket), url = fixUrl(altyaziAdresi))
+            )
+        }
+    }
+
+    /** Etiketler `T\u00fcrk\u00e7e` biçiminde geliyor; kaçış kodlarını çözüyoruz. */
+    private fun kacisCoz(metin: String): String =
+        Regex("""\\u([0-9a-fA-F]{4})""").replace(metin) {
+            it.groupValues[1].toInt(16).toChar().toString()
+        }
+
     /** `source_content` bir <iframe> HTML parçası; src'yi çıkarıp protokolü tamamlıyoruz. */
     private fun iframeAdresi(kaynakIcerik: String?): String? {
         val ham   = kaynakIcerik ?: return null
@@ -308,7 +340,8 @@ class SelcukFlix : MainAPI() {
         }
 
         var bulundu = false
-        val hatalar = mutableListOf<String>()
+        val hatalar  = mutableListOf<String>()
+        val altyazilar = mutableSetOf<String>()
 
         // ! Aynı iframe adresi birden çok dil satırında tekrar ediyor; akış aynı olduğu için
         // ! adrese göre grupluyoruz — WebView çözümlemesi saniyeler sürdüğünden tekrarı göze alamayız
@@ -341,6 +374,11 @@ class SelcukFlix : MainAPI() {
                     Log.d(KAYIT, "çözücü hatası » ${adres} » ${it.message}")
                     hatalar += it.message.orEmpty()
                 }
+
+                // ? Altyazılar hazır çözücünün gözünden kaçıyor, ayrıca topluyoruz
+                runCatching {
+                    altyazilariTopla(adres, altyazilar, subtitleCallback)
+                }.onFailure { Log.d(KAYIT, "altyazı alınamadı » ${adres} » ${it.message}") }
 
                 toplanan.forEach { link ->
                     bulundu = true
